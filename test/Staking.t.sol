@@ -9,7 +9,7 @@ import "../src/AssetIssuer.sol";
 import "../src/StakeFactory.sol";
 import "../src/AssetStaking.sol";
 import "../src/HedgeSSI.sol";
-
+import {Upgrades} from "../lib/openzeppelin-foundry-upgrades/src/Upgrades.sol";
 
 import {Test, console} from "forge-std/Test.sol";
 
@@ -36,6 +36,9 @@ contract FundManagerTest is Test {
     StakeToken stakeToken;
     AssetStaking assetStaking;
     HedgeSSI hedgeSSI;
+    address swapProxy;
+    address assetFactoryProxy;
+    address assetIssuerProxy;
 
     uint256 stakeAmount = 1e8;
 
@@ -46,7 +49,7 @@ contract FundManagerTest is Test {
             symbol: WBTC.symbol(),
             addr: vm.toString(address(WBTC)),
             decimals: WBTC.decimals(),
-            amount: 10 * 10 ** WBTC.decimals() / 60000
+            amount: (10 * 10 ** WBTC.decimals()) / 60000
         });
         Asset memory asset = Asset({
             id: 1,
@@ -59,13 +62,47 @@ contract FundManagerTest is Test {
 
     function setUp() public {
         vm.startPrank(owner);
-        factory = new AssetFactory(owner, swap, vault, "SETH");
-        issuer = new AssetIssuer(owner, address(factory));
-        address assetTokenAddress = factory.createAssetToken(getAsset(), 10000, address(issuer), rebalancer, feeManager);
+
+        swapProxy = Upgrades.deployTransparentProxy(
+            "Swap.sol",
+            owner,
+            abi.encodeCall(Swap.initialize, (owner, "SETH"))
+        );
+
+        assetFactoryProxy = Upgrades.deployTransparentProxy(
+            "AssetFactory.sol",
+            owner,
+            abi.encodeCall(
+                AssetFactory.initialize,
+                (owner, swapProxy, vault, "SETH")
+            )
+        );
+        factory = AssetFactory(assetFactoryProxy);
+        // factory = new AssetFactory(owner, swap, vault, "SETH");
+        assetIssuerProxy = Upgrades.deployTransparentProxy(
+            "AssetIssuer.sol",
+            owner,
+            abi.encodeCall(AssetIssuer.initialize, (owner, assetFactoryProxy))
+        );
+        issuer = AssetIssuer(assetIssuerProxy);
+        // issuer = new AssetIssuer(owner, address(factory));
+
+        address assetTokenAddress = factory.createAssetToken(
+            getAsset(),
+            10000,
+            address(issuer),
+            rebalancer,
+            feeManager
+        );
         assetToken = AssetToken(assetTokenAddress);
         stakeFactory = new StakeFactory(owner, address(factory));
         assetStaking = new AssetStaking(owner);
-        hedgeSSI = new HedgeSSI(owner, orderSigner, address(factory), address(WBTC));
+        hedgeSSI = new HedgeSSI(
+            owner,
+            orderSigner,
+            address(factory),
+            address(WBTC)
+        );
         vm.stopPrank();
         vm.startPrank(address(issuer));
         assetToken.mint(staker, stakeAmount);
@@ -75,7 +112,9 @@ contract FundManagerTest is Test {
     function testStakeAndLock() public {
         // create stake token
         vm.startPrank(owner);
-        stakeToken = StakeToken(stakeFactory.createStakeToken(assetToken.id(), 3600*24*7));
+        stakeToken = StakeToken(
+            stakeFactory.createStakeToken(assetToken.id(), 3600 * 24 * 7)
+        );
         assertEq(stakeToken.token(), address(assetToken));
         vm.stopPrank();
         // stake
@@ -92,10 +131,14 @@ contract FundManagerTest is Test {
         assertEq(assetToken.totalSupply(), stakeAmount);
         // unstake
         vm.startPrank(staker);
-        uint256 unstakeAmount = stakeAmount * 50 / 100;
+        uint256 unstakeAmount = (stakeAmount * 50) / 100;
         stakeToken.unstake(unstakeAmount);
         vm.stopPrank();
-        (uint256 amount, uint256 cooldownAmount, uint256 cooldownEndTimestamp) = stakeToken.stakeInfos(staker);
+        (
+            uint256 amount,
+            uint256 cooldownAmount,
+            uint256 cooldownEndTimestamp
+        ) = stakeToken.stakeInfos(staker);
         assertEq(amount, stakeAmount - cooldownAmount);
         assertEq(unstakeAmount, cooldownAmount);
         assertEq(cooldownEndTimestamp, block.timestamp + stakeToken.cooldown());
@@ -124,7 +167,12 @@ contract FundManagerTest is Test {
         vm.stopPrank();
         // owner update stake config
         vm.startPrank(owner);
-        assetStaking.updateStakeConfig(address(stakeToken), 0, lockAmount * 2, 7 days);
+        assetStaking.updateStakeConfig(
+            address(stakeToken),
+            0,
+            lockAmount * 2,
+            7 days
+        );
         vm.stopPrank();
         // can lock
         vm.startPrank(staker);
@@ -133,7 +181,8 @@ contract FundManagerTest is Test {
         vm.stopPrank();
         assertEq(stakeToken.balanceOf(staker), 0);
         assertEq(stakeToken.balanceOf(address(assetStaking)), lockAmount);
-        (amount, cooldownAmount, cooldownEndTimestamp) = assetStaking.stakeDatas(address(stakeToken), staker);
+        (amount, cooldownAmount, cooldownEndTimestamp) = assetStaking
+            .stakeDatas(address(stakeToken), staker);
         assertEq(amount, lockAmount);
         assertEq(cooldownAmount, 0);
         assertEq(cooldownEndTimestamp, 0);
@@ -145,8 +194,11 @@ contract FundManagerTest is Test {
         vm.stopPrank();
         assertEq(stakeToken.balanceOf(staker), 0);
         assertEq(stakeToken.balanceOf(address(assetStaking)), lockAmount);
-        (amount, cooldownAmount, cooldownEndTimestamp) = assetStaking.stakeDatas(address(stakeToken), staker);
-        (,,uint256 cooldown,,) = assetStaking.stakeConfigs(address(stakeToken));
+        (amount, cooldownAmount, cooldownEndTimestamp) = assetStaking
+            .stakeDatas(address(stakeToken), staker);
+        (, , uint256 cooldown, , ) = assetStaking.stakeConfigs(
+            address(stakeToken)
+        );
         assertEq(amount, 0);
         assertEq(cooldownAmount, lockAmount);
         assertEq(cooldownEndTimestamp, block.timestamp + cooldown);

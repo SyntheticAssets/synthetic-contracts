@@ -1,40 +1,58 @@
 // SPDX-License-Identifier: BUSL-1.1
 pragma solidity ^0.8.25;
-import './Interface.sol';
-import {AccessControl} from "@openzeppelin/contracts/access/AccessControl.sol";
+import "./Interface.sol";
+// import "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
+
+// import {AccessControl} from "@openzeppelin/contracts/access/AccessControl.sol";
+import "./Interface.sol";
+import {AccessControlUpgradeable} from "@openzeppelin/contracts-upgradeable/access/AccessControlUpgradeable.sol";
+import {Initializable} from "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
 import {SignatureChecker} from "@openzeppelin/contracts/utils/cryptography/SignatureChecker.sol";
 import {EnumerableSet} from "@openzeppelin/contracts/utils/structs/EnumerableSet.sol";
 import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
-import {Utils} from './Utils.sol';
+import {Utils} from "./Utils.sol";
 
-contract Swap is AccessControl, ISwap {
+contract Swap is Initializable, AccessControlUpgradeable, ISwap {
     using SafeERC20 for IERC20;
     using EnumerableSet for EnumerableSet.Bytes32Set;
 
+    // State variables
     string public chain;
-    EnumerableSet.Bytes32Set orderHashs;
-    mapping(bytes32 => SwapRequest) swapRequests;
+    EnumerableSet.Bytes32Set private orderHashs;
+    mapping(bytes32 => SwapRequest) private swapRequests;
 
     bytes32 public constant TAKER_ROLE = keccak256("TAKER_ROLE");
     bytes32 public constant MAKER_ROLE = keccak256("MAKER_ROLE");
 
-    mapping(string => bool) outWhiteAddresses;
-    string[] public takerReceivers;
-    string[] public takerSenders;
+    mapping(string => bool) private outWhiteAddresses;
+    string[] private takerReceivers;
+    string[] private takerSenders;
 
-    event AddSwapRequest(address indexed taker, bool inByContract, bool outByContract, OrderInfo orderInfo);
+    // Events
+    event AddSwapRequest(
+        address indexed taker,
+        bool inByContract,
+        bool outByContract,
+        OrderInfo orderInfo
+    );
     event MakerConfirmSwapRequest(address indexed maker, bytes32 orderHash);
     event ConfirmSwapRequest(address indexed taker, bytes32 orderHash);
     event MakerRejectSwapRequest(address indexed maker, bytes32 orderHash);
     event RollbackSwapRequest(address indexed taker, bytes32 orderHash);
     event SetTakerAddresses(string[] receivers, string[] senders);
 
-    constructor(address owner, string memory chain_) {
+    function initialize(
+        address owner,
+        string memory chain_
+    ) public initializer {
+        __AccessControl_init();
         _grantRole(DEFAULT_ADMIN_ROLE, owner);
         chain = chain_;
     }
 
-    function checkOrderInfo(OrderInfo memory orderInfo) public view returns (uint) {
+    function checkOrderInfo(
+        OrderInfo memory orderInfo
+    ) public view returns (uint) {
         if (block.timestamp >= orderInfo.order.deadline) {
             return 1;
         }
@@ -42,16 +60,28 @@ contract Swap is AccessControl, ISwap {
         if (orderHash != orderInfo.orderHash) {
             return 2;
         }
-        if (!SignatureChecker.isValidSignatureNow(orderInfo.order.maker, orderHash, orderInfo.orderSign)) {
+        if (
+            !SignatureChecker.isValidSignatureNow(
+                orderInfo.order.maker,
+                orderHash,
+                orderInfo.orderSign
+            )
+        ) {
             return 3;
         }
         if (orderHashs.contains(orderHash)) {
             return 4;
         }
-        if (orderInfo.order.inAddressList.length != orderInfo.order.inTokenset.length) {
+        if (
+            orderInfo.order.inAddressList.length !=
+            orderInfo.order.inTokenset.length
+        ) {
             return 5;
         }
-        if (orderInfo.order.outAddressList.length != orderInfo.order.outTokenset.length) {
+        if (
+            orderInfo.order.outAddressList.length !=
+            orderInfo.order.outTokenset.length
+        ) {
             return 6;
         }
         if (!hasRole(MAKER_ROLE, orderInfo.order.maker)) {
@@ -66,8 +96,14 @@ contract Swap is AccessControl, ISwap {
     }
 
     function validateOrderInfo(OrderInfo memory orderInfo) internal view {
-        require(orderHashs.contains(orderInfo.orderHash), "order hash not exists");
-        require(orderInfo.orderHash == keccak256(abi.encode(orderInfo.order)), "order hash invalid");
+        require(
+            orderHashs.contains(orderInfo.orderHash),
+            "order hash not exists"
+        );
+        require(
+            orderInfo.orderHash == keccak256(abi.encode(orderInfo.order)),
+            "order hash invalid"
+        );
     }
 
     function getOrderHashs() external view returns (bytes32[] memory) {
@@ -83,10 +119,19 @@ contract Swap is AccessControl, ISwap {
         return orderHashs.at(idx);
     }
 
-    function checkTokenset(Token[] memory tokenset, string[] memory addressList) internal view {
-        require(tokenset.length == addressList.length, "tokenset length not maatch addressList length");
+    function checkTokenset(
+        Token[] memory tokenset,
+        string[] memory addressList
+    ) internal view {
+        require(
+            tokenset.length == addressList.length,
+            "tokenset length not maatch addressList length"
+        );
         for (uint i = 0; i < tokenset.length; i++) {
-            require(bytes32(bytes(tokenset[i].chain)) == bytes32(bytes(chain)), "chain not match");
+            require(
+                bytes32(bytes(tokenset[i].chain)) == bytes32(bytes(chain)),
+                "chain not match"
+            );
             address tokenAddress = Utils.stringToAddress(tokenset[i].addr);
             require(tokenAddress != address(0), "zero token address");
             address receiveAddress = Utils.stringToAddress(addressList[i]);
@@ -94,17 +139,27 @@ contract Swap is AccessControl, ISwap {
         }
     }
 
-    function addSwapRequest(OrderInfo memory orderInfo, bool inByContract, bool outByContract) external onlyRole(TAKER_ROLE) {
+    function addSwapRequest(
+        OrderInfo memory orderInfo,
+        bool inByContract,
+        bool outByContract
+    ) external onlyRole(TAKER_ROLE) {
         uint code = checkOrderInfo(orderInfo);
         require(code == 0, "order not valid");
         swapRequests[orderInfo.orderHash].status = SwapRequestStatus.PENDING;
         swapRequests[orderInfo.orderHash].requester = msg.sender;
         orderHashs.add(orderInfo.orderHash);
         if (inByContract) {
-            checkTokenset(orderInfo.order.inTokenset, orderInfo.order.inAddressList);
+            checkTokenset(
+                orderInfo.order.inTokenset,
+                orderInfo.order.inAddressList
+            );
         }
         if (outByContract) {
-            checkTokenset(orderInfo.order.outTokenset, orderInfo.order.outAddressList);
+            checkTokenset(
+                orderInfo.order.outTokenset,
+                orderInfo.order.outAddressList
+            );
         }
         swapRequests[orderInfo.orderHash].inByContract = inByContract;
         swapRequests[orderInfo.orderHash].outByContract = outByContract;
@@ -112,42 +167,71 @@ contract Swap is AccessControl, ISwap {
         emit AddSwapRequest(msg.sender, inByContract, outByContract, orderInfo);
     }
 
-    function getSwapRequest(bytes32 orderHash) external view returns (SwapRequest memory) {
+    function getSwapRequest(
+        bytes32 orderHash
+    ) external view returns (SwapRequest memory) {
         return swapRequests[orderHash];
     }
 
-    function makerRejectSwapRequest(OrderInfo memory orderInfo) external onlyRole(MAKER_ROLE) {
+    function makerRejectSwapRequest(
+        OrderInfo memory orderInfo
+    ) external onlyRole(MAKER_ROLE) {
         validateOrderInfo(orderInfo);
         bytes32 orderHash = orderInfo.orderHash;
         require(orderInfo.order.maker == msg.sender, "not order maker");
-        require(swapRequests[orderHash].status == SwapRequestStatus.PENDING, "swap request status is not pending");
+        require(
+            swapRequests[orderHash].status == SwapRequestStatus.PENDING,
+            "swap request status is not pending"
+        );
         swapRequests[orderHash].status = SwapRequestStatus.REJECTED;
         swapRequests[orderHash].blocknumber = block.number;
         emit MakerRejectSwapRequest(msg.sender, orderHash);
     }
 
-    function transferTokenset(address from, Token[] memory tokenset, uint256 amount, string[] memory toAddressList) internal {
+    function transferTokenset(
+        address from,
+        Token[] memory tokenset,
+        uint256 amount,
+        string[] memory toAddressList
+    ) internal {
         for (uint i = 0; i < tokenset.length; i++) {
             address tokenAddress = Utils.stringToAddress(tokenset[i].addr);
             address to = Utils.stringToAddress(toAddressList[i]);
             IERC20 token = IERC20(tokenAddress);
-            uint tokenAmount = tokenset[i].amount * amount / 10**8;
+            uint tokenAmount = (tokenset[i].amount * amount) / 10 ** 8;
             require(token.balanceOf(from) >= tokenAmount, "not enough balance");
-            require(token.allowance(from, address(this)) >= tokenAmount, "not enough allowance");
+            require(
+                token.allowance(from, address(this)) >= tokenAmount,
+                "not enough allowance"
+            );
             token.safeTransferFrom(from, to, tokenAmount);
         }
     }
 
-    function makerConfirmSwapRequest(OrderInfo memory orderInfo, bytes[] memory outTxHashs) external onlyRole(MAKER_ROLE) {
+    function makerConfirmSwapRequest(
+        OrderInfo memory orderInfo,
+        bytes[] memory outTxHashs
+    ) external onlyRole(MAKER_ROLE) {
         validateOrderInfo(orderInfo);
         bytes32 orderHash = orderInfo.orderHash;
         SwapRequest memory swapRequest = swapRequests[orderHash];
         require(orderInfo.order.maker == msg.sender, "not order maker");
-        require(swapRequest.status == SwapRequestStatus.PENDING, "status error");
+        require(
+            swapRequest.status == SwapRequestStatus.PENDING,
+            "status error"
+        );
         if (swapRequest.outByContract) {
-            transferTokenset(msg.sender, orderInfo.order.outTokenset, orderInfo.order.outAmount, orderInfo.order.outAddressList);
+            transferTokenset(
+                msg.sender,
+                orderInfo.order.outTokenset,
+                orderInfo.order.outAmount,
+                orderInfo.order.outAddressList
+            );
         } else {
-            require(orderInfo.order.outTokenset.length == outTxHashs.length, "wrong outTxHashs length");
+            require(
+                orderInfo.order.outTokenset.length == outTxHashs.length,
+                "wrong outTxHashs length"
+            );
             swapRequests[orderHash].outTxHashs = outTxHashs;
         }
         swapRequests[orderHash].status = SwapRequestStatus.MAKER_CONFIRMED;
@@ -155,27 +239,52 @@ contract Swap is AccessControl, ISwap {
         emit MakerConfirmSwapRequest(msg.sender, orderHash);
     }
 
-    function rollbackSwapRequest(OrderInfo memory orderInfo) external onlyRole(TAKER_ROLE) {
+    function rollbackSwapRequest(
+        OrderInfo memory orderInfo
+    ) external onlyRole(TAKER_ROLE) {
         validateOrderInfo(orderInfo);
         bytes32 orderHash = orderInfo.orderHash;
-        require(swapRequests[orderHash].requester == msg.sender, "not order taker");
-        require(swapRequests[orderHash].status == SwapRequestStatus.MAKER_CONFIRMED, "swap request status is not maker_confirmed");
-        require(!swapRequests[orderHash].outByContract, "out by contract cannot rollback");
+        require(
+            swapRequests[orderHash].requester == msg.sender,
+            "not order taker"
+        );
+        require(
+            swapRequests[orderHash].status == SwapRequestStatus.MAKER_CONFIRMED,
+            "swap request status is not maker_confirmed"
+        );
+        require(
+            !swapRequests[orderHash].outByContract,
+            "out by contract cannot rollback"
+        );
         swapRequests[orderHash].status = SwapRequestStatus.PENDING;
         swapRequests[orderHash].blocknumber = block.number;
         emit RollbackSwapRequest(msg.sender, orderHash);
     }
 
-    function confirmSwapRequest(OrderInfo memory orderInfo, bytes[] memory inTxHashs) external onlyRole(TAKER_ROLE) {
+    function confirmSwapRequest(
+        OrderInfo memory orderInfo,
+        bytes[] memory inTxHashs
+    ) external onlyRole(TAKER_ROLE) {
         validateOrderInfo(orderInfo);
         bytes32 orderHash = orderInfo.orderHash;
         SwapRequest memory swapRequest = swapRequests[orderHash];
         require(swapRequest.requester == msg.sender, "not order taker");
-        require(swapRequest.status == SwapRequestStatus.MAKER_CONFIRMED, "status error");
-         if (swapRequest.inByContract) {
-            transferTokenset(msg.sender, orderInfo.order.inTokenset, orderInfo.order.inAmount, orderInfo.order.inAddressList);
+        require(
+            swapRequest.status == SwapRequestStatus.MAKER_CONFIRMED,
+            "status error"
+        );
+        if (swapRequest.inByContract) {
+            transferTokenset(
+                msg.sender,
+                orderInfo.order.inTokenset,
+                orderInfo.order.inAmount,
+                orderInfo.order.inAddressList
+            );
         } else {
-            require(orderInfo.order.inTokenset.length == inTxHashs.length, "wrong inTxHashs length");
+            require(
+                orderInfo.order.inTokenset.length == inTxHashs.length,
+                "wrong inTxHashs length"
+            );
             swapRequests[orderHash].inTxHashs = inTxHashs;
         }
         swapRequests[orderHash].status = SwapRequestStatus.CONFIRMED;
@@ -183,7 +292,10 @@ contract Swap is AccessControl, ISwap {
         emit ConfirmSwapRequest(msg.sender, orderHash);
     }
 
-    function setTakerAddresses(string[] memory takerReceivers_, string[] memory takerSenders_) external onlyRole(DEFAULT_ADMIN_ROLE) {
+    function setTakerAddresses(
+        string[] memory takerReceivers_,
+        string[] memory takerSenders_
+    ) external onlyRole(DEFAULT_ADMIN_ROLE) {
         for (uint i = 0; i < takerReceivers.length; i++) {
             outWhiteAddresses[takerReceivers[i]] = false;
         }
@@ -199,7 +311,11 @@ contract Swap is AccessControl, ISwap {
         emit SetTakerAddresses(takerReceivers, takerSenders);
     }
 
-    function getTakerAddresses() external view returns (string[] memory receivers, string[] memory senders) {
+    function getTakerAddresses()
+        external
+        view
+        returns (string[] memory receivers, string[] memory senders)
+    {
         return (takerReceivers, takerSenders);
     }
 }

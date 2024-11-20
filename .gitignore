@@ -2,3 +2,6 @@ cache
 out
 .deploy.env
 broadcast
+script/.DS_Store
+src/.DS_Store
+test/.DS_Store

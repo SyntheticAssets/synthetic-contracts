@@ -1,14 +1,14 @@
 // SPDX-License-Identifier: BUSL-1.1
 pragma solidity ^0.8.25;
-
 import {Script, console} from "forge-std/Script.sol";
+import {Upgrades} from "../lib/openzeppelin-foundry-upgrades/src/Upgrades.sol";
 import {Swap} from "../src/Swap.sol";
 import {AssetFactory} from "../src/AssetFactory.sol";
 import {AssetIssuer} from "../src/AssetIssuer.sol";
 import {AssetRebalancer} from "../src/AssetRebalancer.sol";
 import {AssetFeeManager} from "../src/AssetFeeManager.sol";
 
-contract DeployerScript is Script {
+contract DeployAssetController is Script {
     function setUp() public {}
 
     function run() public {
@@ -16,16 +16,74 @@ contract DeployerScript is Script {
         address vault = vm.envAddress("VAULT");
         string memory chain = vm.envString("CHAIN_CODE");
         vm.startBroadcast();
-        Swap swap = new Swap(owner, chain);
-        AssetFactory factory = new AssetFactory(owner, address(swap), vault, chain);
-        AssetIssuer issuer = new AssetIssuer(owner, address(factory));
-        AssetRebalancer rebalancer = new AssetRebalancer(owner, address(factory));
-        AssetFeeManager fee_manager = new AssetFeeManager(owner, address(factory));
+        address Swap_proxy = Upgrades.deployTransparentProxy(
+            "Swap.sol",
+            owner,
+            abi.encodeCall(Swap.initialize, (owner, chain))
+        );
+
+        address AssetFactory_proxy = Upgrades.deployTransparentProxy(
+            "AssetFactory.sol",
+            owner,
+            abi.encodeCall(
+                AssetFactory.initialize,
+                (owner, Swap_proxy, vault, chain)
+            )
+        );
+
+        address AssetIssuer_proxy = Upgrades.deployTransparentProxy(
+            "AssetIssuer.sol",
+            owner,
+            abi.encodeCall(AssetIssuer.initialize, (owner, AssetFactory_proxy))
+        );
+
+        address AssetRebalancer_proxy = Upgrades.deployTransparentProxy(
+            "AssetRebalancer.sol",
+            owner,
+            abi.encodeCall(
+                AssetRebalancer.initialize,
+                (owner, AssetFactory_proxy)
+            )
+        );
+
+        address AssetFeeManager_proxy = Upgrades.deployTransparentProxy(
+            "AssetFeeManager.sol",
+            owner,
+            abi.encodeCall(
+                AssetFeeManager.initialize,
+                (owner, AssetFactory_proxy)
+            )
+        );
         vm.stopBroadcast();
-        console.log(string.concat("swap=", vm.toString(address(swap))));
-        console.log(string.concat("factory=", vm.toString(address(factory))));
-        console.log(string.concat("issuer=", vm.toString(address(issuer))));
-        console.log(string.concat("rebalancer=", vm.toString(address(rebalancer))));
-        console.log(string.concat("fee_manager=", vm.toString(address(fee_manager))));
+        console.log(
+            string.concat("Swap_proxy=", vm.toString(address(Swap_proxy)))
+        );
+        console.log(
+            string.concat(
+                "AssetFactory_proxy=",
+                vm.toString(address(AssetFactory_proxy))
+            )
+        );
+
+        console.log(
+            string.concat(
+                "AssetIssuer_proxy=",
+                vm.toString(address(AssetIssuer_proxy))
+            )
+        );
+
+        console.log(
+            string.concat(
+                "AssetRebalancer_proxy=",
+                vm.toString(address(AssetRebalancer_proxy))
+            )
+        );
+
+        console.log(
+            string.concat(
+                "AssetFeeManager_proxy=",
+                vm.toString(address(AssetFeeManager_proxy))
+            )
+        );
     }
 }

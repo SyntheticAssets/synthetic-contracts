@@ -43,7 +43,13 @@ struct Range {
     uint256 max;
 }
 
-enum SwapRequestStatus {NONE, PENDING, MAKER_CONFIRMED, CONFIRMED, REJECTED}
+enum SwapRequestStatus {
+    NONE,
+    PENDING,
+    MAKER_CONFIRMED,
+    CONFIRMED,
+    REJECTED
+}
 
 struct SwapRequest {
     bytes[] inTxHashs;
@@ -55,7 +61,12 @@ struct SwapRequest {
     uint256 blocknumber;
 }
 
-enum RequestStatus {NONE, PENDING, CONFIRMED, REJECTED}
+enum RequestStatus {
+    NONE,
+    PENDING,
+    CONFIRMED,
+    REJECTED
+}
 
 struct Request {
     uint nonce;
@@ -91,7 +102,10 @@ interface IAssetToken is IERC20, IAccessControl {
     function lockRebalance() external;
     function rebalancing() external view returns (bool);
     function unlockRebalance() external;
-    function rebalance(Token[] memory inBasket, Token[] memory outBasket) external;
+    function rebalance(
+        Token[] memory inBasket,
+        Token[] memory outBasket
+    ) external;
     // fee
     function feeDecimals() external view returns (uint);
     function maxFee() external view returns (uint);
@@ -112,7 +126,13 @@ interface IAssetFactory {
     function vault() external view returns (address);
     function chain() external view returns (string memory);
     // asset tokens
-    function createAssetToken(Asset memory asset, uint maxFee, address issuer, address rebalancer, address feeMamanger) external returns (address);
+    function createAssetToken(
+        Asset memory asset,
+        uint maxFee,
+        address issuer,
+        address rebalancer,
+        address feeMamanger
+    ) external returns (address);
     function assetTokens(uint assetID) external view returns (address);
     function hasAssetID(uint assetID) external view returns (bool);
     function getAssetIDs() external view returns (uint[] memory);
@@ -122,18 +142,38 @@ interface IAssetFactory {
 }
 
 interface ISwap is IAccessControl {
-    function checkOrderInfo(OrderInfo memory orderInfo) external view returns (uint);
+    function checkOrderInfo(
+        OrderInfo memory orderInfo
+    ) external view returns (uint);
     function getOrderHashs() external view returns (bytes32[] memory);
     function getOrderHashLength() external view returns (uint256);
     function getOrderHash(uint256 idx) external view returns (bytes32);
-    function getSwapRequest(bytes32 orderHash) external view returns (SwapRequest memory);
-    function addSwapRequest(OrderInfo memory orderInfo, bool inByContract, bool outByContract) external;
-    function makerConfirmSwapRequest(OrderInfo memory orderInfo, bytes[] memory outTxHashs) external;
+    function getSwapRequest(
+        bytes32 orderHash
+    ) external view returns (SwapRequest memory);
+    function addSwapRequest(
+        OrderInfo memory orderInfo,
+        bool inByContract,
+        bool outByContract
+    ) external;
+    function makerConfirmSwapRequest(
+        OrderInfo memory orderInfo,
+        bytes[] memory outTxHashs
+    ) external;
     function makerRejectSwapRequest(OrderInfo memory orderInfo) external;
     function rollbackSwapRequest(OrderInfo memory orderInfo) external;
-    function confirmSwapRequest(OrderInfo memory orderInfo, bytes[] memory inTxHashs) external;
-    function setTakerAddresses(string[] memory takerReceivers_, string[] memory takerSenders_) external;
-    function getTakerAddresses() external view returns (string[] memory receivers, string[] memory senders);
+    function confirmSwapRequest(
+        OrderInfo memory orderInfo,
+        bytes[] memory inTxHashs
+    ) external;
+    function setTakerAddresses(
+        string[] memory takerReceivers_,
+        string[] memory takerSenders_
+    ) external;
+    function getTakerAddresses()
+        external
+        view
+        returns (string[] memory receivers, string[] memory senders);
 }
 
 interface IAssetController {
@@ -143,21 +183,52 @@ interface IAssetController {
 interface IAssetIssuer is IAssetController {
     // mint
     function getMintRequestLength() external view returns (uint256);
-    function getMintRequest(uint256 nonce) external view returns (Request memory);
-    function addMintRequest(uint256 assetID, OrderInfo memory orderInfo) external returns (uint);
-    function rejectMintRequest(uint256 nonce, OrderInfo memory orderInfo) external;
-    function confirmMintRequest(uint nonce, OrderInfo memory orderInfo, bytes[] memory inTxHashs) external;
+    function getMintRequest(
+        uint256 nonce
+    ) external view returns (Request memory);
+    function addMintRequest(
+        uint256 assetID,
+        OrderInfo memory orderInfo
+    ) external returns (uint);
+    function rejectMintRequest(
+        uint256 nonce,
+        OrderInfo memory orderInfo
+    ) external;
+    function confirmMintRequest(
+        uint nonce,
+        OrderInfo memory orderInfo,
+        bytes[] memory inTxHashs
+    ) external;
     // redeem
     function getRedeemRequestLength() external view returns (uint256);
-    function getRedeemRequest(uint256 nonce) external view returns (Request memory);
-    function addRedeemRequest(uint256 assetID, OrderInfo memory orderInfo) external returns (uint256);
+    function getRedeemRequest(
+        uint256 nonce
+    ) external view returns (Request memory);
+    function addRedeemRequest(
+        uint256 assetID,
+        OrderInfo memory orderInfo
+    ) external returns (uint256);
     function rejectRedeemRequest(uint256 nonce) external;
-    function confirmRedeemRequest(uint nonce, OrderInfo memory orderInfo, bytes[] memory inTxHashs) external;
+    function confirmRedeemRequest(
+        uint nonce,
+        OrderInfo memory orderInfo,
+        bytes[] memory inTxHashs
+    ) external;
     // manage participants
-    function isParticipant(uint256 assetID, address participant) external view returns (bool);
-    function getParticipants(uint256 assetID) external view returns (address[] memory);
-    function getParticipantLength(uint256 assetID) external view returns (uint256);
-    function getParticipant(uint256 assetID, uint256 idx) external view returns (address);
+    function isParticipant(
+        uint256 assetID,
+        address participant
+    ) external view returns (bool);
+    function getParticipants(
+        uint256 assetID
+    ) external view returns (address[] memory);
+    function getParticipantLength(
+        uint256 assetID
+    ) external view returns (uint256);
+    function getParticipant(
+        uint256 assetID,
+        uint256 idx
+    ) external view returns (address);
     function addParticipant(uint256 assetID, address participant) external;
     function removeParticipant(uint256 assetID, address participant) external;
     // fee
@@ -165,26 +236,50 @@ interface IAssetIssuer is IAssetController {
     function getIssueFee(uint256 assetID) external view returns (uint256);
     function feeDecimals() external view returns (uint256);
     // issue amount range
-    function getIssueAmountRange(uint256 assetID) external view returns (Range memory);
-    function setIssueAmountRange(uint256 assetID, Range calldata issueAmountRange) external;
+    function getIssueAmountRange(
+        uint256 assetID
+    ) external view returns (Range memory);
+    function setIssueAmountRange(
+        uint256 assetID,
+        Range calldata issueAmountRange
+    ) external;
     // burn for
     function burnFor(uint256 assetID, uint256 amount) external;
 }
 
 interface IAssetRebalancer is IAssetController {
     function getRebalanceRequestLength() external view returns (uint256);
-    function getRebalanceRequest(uint256 nonce) external view returns (Request memory);
-    function addRebalanceRequest(uint256 assetID, Token[] memory basket, OrderInfo memory orderInfo) external returns (uint256);
+    function getRebalanceRequest(
+        uint256 nonce
+    ) external view returns (Request memory);
+    function addRebalanceRequest(
+        uint256 assetID,
+        Token[] memory basket,
+        OrderInfo memory orderInfo
+    ) external returns (uint256);
     function rejectRebalanceRequest(uint256 nonce) external;
-    function confirmRebalanceRequest(uint nonce, OrderInfo memory orderInfo, bytes[] memory inTxHashs) external;
+    function confirmRebalanceRequest(
+        uint nonce,
+        OrderInfo memory orderInfo,
+        bytes[] memory inTxHashs
+    ) external;
 }
 
 interface IAssetFeeManager is IAssetController {
     function setFee(uint256 assetID, uint256 fee) external;
     function collectFeeTokenset(uint256 assetID) external;
     function getBurnFeeRequestLength() external view returns (uint256);
-    function getBurnFeeRequest(uint256 nonce) external view returns (Request memory);
-    function addBurnFeeRequest(uint256 assetID, OrderInfo memory orderInfo) external returns (uint256);
+    function getBurnFeeRequest(
+        uint256 nonce
+    ) external view returns (Request memory);
+    function addBurnFeeRequest(
+        uint256 assetID,
+        OrderInfo memory orderInfo
+    ) external returns (uint256);
     function rejectBurnFeeRequest(uint256 nonce) external;
-    function confirmBurnFeeRequest(uint nonce, OrderInfo memory orderInfo, bytes[] memory inTxHashs) external;
+    function confirmBurnFeeRequest(
+        uint nonce,
+        OrderInfo memory orderInfo,
+        bytes[] memory inTxHashs
+    ) external;
 }
