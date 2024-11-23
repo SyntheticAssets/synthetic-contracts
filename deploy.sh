@@ -28,6 +28,8 @@ ETHERSCAN_URL=$(eval echo '$'${CHAIN_CODE}_ETHERSCAN_URL)
 ETHERSCAN_APIKEY=$(eval echo '$'${CHAIN_CODE}_ETHERSCAN_APIKEY)
 export OWNER=$(eval echo '$'${CHAIN_CODE}_OWNER)
 export VAULT=$(eval echo '$'${CHAIN_CODE}_VAULT)
+export ORDER_SIGNER=$(eval echo '$'${CHAIN_CODE}_ORDER_SIGNER)
+export REDEEM_TOKEN=$(eval echo '$'${CHAIN_CODE}_REDEEM_TOKEN)
 export CHAIN_CODE=${CHAIN_CODE}
 forge script script/Deployer.s.sol --account ${account} --rpc-url $RPC_URL \
     --verifier-url $ETHERSCAN_URL --etherscan-api-key $ETHERSCAN_APIKEY --broadcast --verify -vvv

@@ -53,11 +53,11 @@ contract StakeToken is ERC20 {
         _burn(msg.sender, amount);
     }
 
-    function withdraw() external {
+    function withdraw(uint256 amount) external {
         StakeInfo storage stakeInfo = stakeInfos[msg.sender];
-        require(stakeInfo.cooldownAmount > 0, "zero cooldown amount");
+        require(stakeInfo.cooldownAmount >= amount, "not enough cooldown amount");
         require(stakeInfo.cooldownEndTimestamp <= block.timestamp, "cooldowning");
-        IERC20(token).safeTransfer(msg.sender, stakeInfo.cooldownAmount);
-        stakeInfo.cooldownAmount = 0;
+        IERC20(token).safeTransfer(msg.sender, amount);
+        stakeInfo.cooldownAmount -= amount;
     }
 }

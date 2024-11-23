@@ -65,6 +65,24 @@ contract HedgeSSI is Ownable, ERC20 {
         supportAssetIDs.add(assetID);
     }
 
+    function updateOrderSigner(address orderSigner_) external onlyOwner {
+        require(orderSigner_ != address(0), "orderSigner is zero address");
+        require(orderSigner_ != orderSigner, "orderSigner not change");
+        orderSigner = orderSigner_;
+    }
+
+    function updateRedeemToken(address redeemToken_) external onlyOwner {
+        require(redeemToken_ != address(0), "redeem token is zero address");
+        require(redeemToken_ != redeemToken, "redeem token not change");
+        redeemToken = redeemToken_;
+    }
+
+    function removeSupportAsset(uint256 assetID) external onlyOwner {
+        require(IAssetFactory(factoryAddress).hasAssetID(assetID), "asset not exists");
+        require(supportAssetIDs.contains(assetID), "assetID is not supported");
+        supportAssetIDs.remove(assetID);
+    }
+
     function checkHedgeOrder(HedgeOrder calldata hedgeOrder, bytes32 orderHash, bytes calldata orderSignature) public view {
         if (hedgeOrder.orderType == HedgeOrderType.MINT) {
             require(supportAssetIDs.contains(hedgeOrder.assetID), "assetID not supported");
@@ -153,5 +171,20 @@ contract HedgeSSI is Ownable, ERC20 {
         IERC20(redeemToken).safeTransfer(hedgeOrder.requester, hedgeOrder.outAmount);
         _burn(address(this), hedgeOrder.inAmount);
         orderStatus[orderHash] = HedgeOrderStatus.CONFIRMED;
+    }
+
+    function getOrderHashs() external view returns (bytes32[] memory orderHashs_) {
+        orderHashs_ = new bytes32[](orderHashs.length());
+        for (uint i = 0; i < orderHashs.length(); i++) {
+            orderHashs_[i] = orderHashs.at(i);
+        }
+    }
+
+    function getOrderHashLength() external view returns (uint256) {
+        return orderHashs.length();
+    }
+
+    function getOrderHash(uint256 nonce) external view returns (bytes32) {
+        return orderHashs.at(nonce);
     }
 }

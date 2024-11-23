@@ -106,9 +106,9 @@ contract FundManagerTest is Test {
         // withdraw
         vm.startPrank(staker);
         vm.expectRevert();
-        stakeToken.withdraw();
+        stakeToken.withdraw(cooldownAmount);
         vm.warp(block.timestamp + stakeToken.cooldown());
-        stakeToken.withdraw();
+        stakeToken.withdraw(cooldownAmount);
         // check balance
         assertEq(assetToken.balanceOf(staker), unstakeAmount);
         assertEq(stakeToken.balanceOf(staker), stakeAmount - unstakeAmount);
