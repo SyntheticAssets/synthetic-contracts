@@ -74,6 +74,9 @@ contract Swap is AccessControl, Pausable, ISwap {
                 return 8;
             }
         }
+        if (keccak256(abi.encode(orderInfo.order.chain)) != keccak256(abi.encode(chain))) {
+            return 9;
+        }
         return 0;
     }
 
@@ -96,7 +99,7 @@ contract Swap is AccessControl, Pausable, ISwap {
     }
 
     function checkTokenset(Token[] memory tokenset, string[] memory addressList) internal view {
-        require(tokenset.length == addressList.length, "tokenset length not maatch addressList length");
+        require(tokenset.length == addressList.length, "tokenset length not match addressList length");
         for (uint i = 0; i < tokenset.length; i++) {
             require(bytes32(bytes(tokenset[i].chain)) == bytes32(bytes(chain)), "chain not match");
             address tokenAddress = Utils.stringToAddress(tokenset[i].addr);

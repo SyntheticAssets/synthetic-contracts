@@ -49,7 +49,7 @@ contract DeployerScript is Script {
         USSI uSSIImpl = new USSI();
         address uSSI = address(new ERC1967Proxy(
             address(uSSIImpl),
-            abi.encodeCall(USSI.initialize, (owner, orderSigner, address(factory), redeemToken))
+            abi.encodeCall(USSI.initialize, (owner, orderSigner, address(factory), redeemToken, chain))
         ));
         address sUSSI = address(new ERC1967Proxy(
             address(stakeTokenImpl),

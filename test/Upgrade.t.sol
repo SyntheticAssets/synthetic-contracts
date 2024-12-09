@@ -85,7 +85,7 @@ contract UpgradeTest is Test {
         )));
         uSSI = USSI(address(new ERC1967Proxy(
             address(new USSI()),
-            abi.encodeCall(USSI.initialize, (owner, orderSigner, address(factory), redeemToken))
+            abi.encodeCall(USSI.initialize, (owner, orderSigner, address(factory), redeemToken, "SETH"))
         )));
         sUSSI = StakeToken(address(new ERC1967Proxy(
             address(stakeTokenImpl),
@@ -110,6 +110,11 @@ contract UpgradeTest is Test {
         factory.setTokenImpl(tokenImpl);
         assertNotEq(oldTokenImpl, tokenImpl);
         assertEq(assetToken, factory.assetTokens(1));
+        assertNotEq(Upgrades.getImplementationAddress(assetToken), tokenImpl);
+        uint256[] memory toUpgradeAssetIDs = new uint256[](1);
+        toUpgradeAssetIDs[0] = 1;
+        factory.upgradeTokenImpl(toUpgradeAssetIDs);
+        assertEq(factory.tokenImpls(1), tokenImpl);
         assertEq(Upgrades.getImplementationAddress(assetToken), tokenImpl);
         // upgrade stake factory
         address stakeFactoryImpl = address(new StakeFactory());
@@ -122,6 +127,9 @@ contract UpgradeTest is Test {
         // upgrade stake token
         address oldSTImpl = stakeFactory.stImpl();
         stakeFactory.setSTImpl(stImpl);
+        assertNotEq(Upgrades.getImplementationAddress(stakeToken), stImpl);
+        stakeFactory.upgradeSTImpl(toUpgradeAssetIDs);
+        assertEq(stakeFactory.stImpls(1), stImpl);
         assertEq(Upgrades.getImplementationAddress(stakeToken), stImpl);
         assertNotEq(oldSTImpl, stImpl);
         assertEq(stakeToken, stTokens[0]);

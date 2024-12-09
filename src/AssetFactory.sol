@@ -25,6 +25,7 @@ contract AssetFactory is Initializable, OwnableUpgradeable, UUPSUpgradeable, IAs
     address public vault;
     string public chain;
     address public tokenImpl;
+    mapping(uint => address) public tokenImpls;
 
     event AssetTokenCreated(address assetTokenAddress);
     event SetVault(address vault);
@@ -74,10 +75,17 @@ contract AssetFactory is Initializable, OwnableUpgradeable, UUPSUpgradeable, IAs
         require(tokenImpl_ != tokenImpl, "token impl is not change");
         tokenImpl = tokenImpl_;
         emit SetTokenImpl(tokenImpl);
-        for (uint i = 0; i < assetIDs.length(); i++) {
-            address assetToken = assetTokens[assetIDs.at(i)];
-            UUPSUpgradeable(assetToken).upgradeToAndCall(tokenImpl, new bytes(0));
-            emit UpgradeAssetToken(assetIDs.at(i), tokenImpl);
+    }
+
+    function upgradeTokenImpl(uint256[] calldata assetIDs_) external onlyOwner {
+        uint assetID;
+        for (uint i = 0; i < assetIDs_.length; i++) {
+            assetID = assetIDs_[i];
+            require(assetIDs.contains(assetID), "asset not exist");
+            require(tokenImpls[assetID] != tokenImpl, "asset token already upgraded");
+            UUPSUpgradeable(assetTokens[assetID]).upgradeToAndCall(tokenImpl, new bytes(0));
+            emit UpgradeAssetToken(assetID, tokenImpl);
+            tokenImpls[assetID] = tokenImpl;
         }
     }
 
@@ -97,6 +105,7 @@ contract AssetFactory is Initializable, OwnableUpgradeable, UUPSUpgradeable, IAs
         issuers[asset.id] = issuer;
         rebalancers[asset.id] = rebalancer;
         feeManagers[asset.id] = feeManager;
+        tokenImpls[asset.id] = tokenImpl;
         assetIDs.add(asset.id);
         emit AssetTokenCreated(address(assetToken));
         return address(assetToken);
@@ -110,6 +119,7 @@ contract AssetFactory is Initializable, OwnableUpgradeable, UUPSUpgradeable, IAs
         address oldIssuer = issuers[assetID];
         assetToken.revokeRole(assetToken.ISSUER_ROLE(), oldIssuer);
         assetToken.grantRole(assetToken.ISSUER_ROLE(), issuer);
+        issuers[assetID] = issuer;
         emit SetIssuer(assetID, oldIssuer, issuer);
     }
 
@@ -121,6 +131,7 @@ contract AssetFactory is Initializable, OwnableUpgradeable, UUPSUpgradeable, IAs
         address oldRebalancer = rebalancers[assetID];
         assetToken.revokeRole(assetToken.REBALANCER_ROLE(), oldRebalancer);
         assetToken.grantRole(assetToken.REBALANCER_ROLE(), rebalancer);
+        rebalancers[assetID] = rebalancer;
         emit SetRebalancer(assetID, oldRebalancer, rebalancer);
     }
 
@@ -131,6 +142,7 @@ contract AssetFactory is Initializable, OwnableUpgradeable, UUPSUpgradeable, IAs
         address oldFeeManager = feeManagers[assetID];
         assetToken.revokeRole(assetToken.FEEMANAGER_ROLE(), oldFeeManager);
         assetToken.grantRole(assetToken.FEEMANAGER_ROLE(), feeManager);
+        feeManagers[assetID] = feeManager;
         emit SetFeeManager(assetID, oldFeeManager, feeManager);
     }
 

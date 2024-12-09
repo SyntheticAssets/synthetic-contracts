@@ -106,7 +106,8 @@ contract AssetLocking is Initializable, OwnableUpgradeable, UUPSUpgradeable, Pau
         require(IERC20(token).allowance(msg.sender, address(this)) >= amount, "not enough allowance");
         lockData.amount += amount;
         lockConfig.totalLock += amount;
-        IERC20(token).transferFrom(msg.sender, address(this), amount);
+        IERC20(token).safeTransferFrom(msg.sender, address(this), amount);
+        require(IERC20(token).balanceOf(address(this)) >= (lockConfig.totalLock + lockConfig.totalCooldown), "token balance not in consistency");
         emit Lock(msg.sender, token, amount, lockData.amount, lockConfig.totalLock);
     }
 
@@ -131,6 +132,7 @@ contract AssetLocking is Initializable, OwnableUpgradeable, UUPSUpgradeable, Pau
         LockConfig storage lockConfig = lockConfigs[token];
         lockConfig.totalCooldown -= amount;
         IERC20(token).safeTransfer(msg.sender, amount);
+        require(IERC20(token).balanceOf(address(this)) >= (lockConfig.totalLock + lockConfig.totalCooldown), "token balance not in consistency");
         emit Withdraw(msg.sender, token, amount);
     }
 }

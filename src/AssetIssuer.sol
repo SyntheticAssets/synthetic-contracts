@@ -133,7 +133,7 @@ contract AssetIssuer is AssetController, IAssetIssuer {
         require(mintRequest.status == RequestStatus.PENDING);
         ISwap swap = ISwap(mintRequest.swapAddress);
         SwapRequest memory swapRequest = swap.getSwapRequest(mintRequest.orderHash);
-        require(swapRequest.status == SwapRequestStatus.REJECTED || swapRequest.status == SwapRequestStatus.CANCEL);
+        require(swapRequest.status == SwapRequestStatus.REJECTED || swapRequest.status == SwapRequestStatus.CANCEL, "swap request is not rejected or cancelled");
         Order memory order = orderInfo.order;
         Token[] memory inTokenset = order.inTokenset;
         IAssetFactory factory = IAssetFactory(factoryAddress);
@@ -240,7 +240,7 @@ contract AssetIssuer is AssetController, IAssetIssuer {
         require(redeemRequest.status == RequestStatus.PENDING, "redeem request is not pending");
         ISwap swap = ISwap(redeemRequest.swapAddress);
         SwapRequest memory swapRequest = swap.getSwapRequest(redeemRequest.orderHash);
-        require(swapRequest.status == SwapRequestStatus.REJECTED, "swap request is not rejected");
+        require(swapRequest.status == SwapRequestStatus.REJECTED || swapRequest.status == SwapRequestStatus.CANCEL, "swap request is not rejected or cancelled");
         IAssetToken assetToken = IAssetToken(redeemRequest.assetTokenAddress);
         require(assetToken.balanceOf(address(this)) >= redeemRequest.amount, "not enough asset token to transfer");
         assetToken.safeTransfer(redeemRequest.requester, redeemRequest.amount);
@@ -331,6 +331,7 @@ contract AssetIssuer is AssetController, IAssetIssuer {
         IAssetFactory factory = IAssetFactory(factoryAddress);
         IAssetToken assetToken = IAssetToken(factory.assetTokens(assetID));
         require(assetToken.allowance(msg.sender, address(this)) >= amount, "not enough allowance");
+        require(assetToken.feeCollected(), "asset token has fee not collected");
         assetToken.lockIssue();
         assetToken.safeTransferFrom(msg.sender, address(this), amount);
         assetToken.burn(amount);

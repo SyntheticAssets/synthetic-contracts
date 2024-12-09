@@ -102,6 +102,7 @@ contract FundManagerTest is Test {
             amount: 10 ** WETH.decimals()
         });
         Order memory order = Order({
+            chain: "SETH",
             maker: pmm,
             nonce: 1,
             inTokenset: inTokenset,
@@ -188,6 +189,7 @@ contract FundManagerTest is Test {
         });
         WETH.approve(address(swap), 10**WETH.decimals());
         Order memory order = Order({
+            chain: "SETH",
             maker: pmm,
             nonce: 1,
             inTokenset: getAsset().tokenset,
@@ -269,6 +271,7 @@ contract FundManagerTest is Test {
             amount: 10 ** WETH.decimals()
         });
         Order memory order = Order({
+            chain: "SETH",
             maker: pmm,
             nonce: 1,
             inTokenset: inTokenset,
@@ -321,6 +324,7 @@ contract FundManagerTest is Test {
             amount: 10 ** WETH.decimals()
         });
         Order memory order = Order({
+            chain: "SETH",
             maker: pmm,
             nonce: 1,
             inTokenset: assetToken.getBasket(),
@@ -638,20 +642,25 @@ contract FundManagerTest is Test {
             decimals: 18,
             amount: 800375696545671
         });
+        Order memory order = Order({
+            chain: "SETH",
+            maker: pmm,
+            nonce: 1719484311801267893,
+            inTokenset: inTokenset,
+            outTokenset: outTokenset,
+            inAddressList: inAddressList,
+            outAddressList: outAddressList,
+            inAmount: 100000000,
+            outAmount: 98168567,
+            deadline: 1719484491
+        });
+        bytes32 orderHash = keccak256(abi.encode(order));
+        (uint8 v, bytes32 r, bytes32 s) = vm.sign(0x3, orderHash);
+        bytes memory orderSign = abi.encodePacked(r, s, v);
         OrderInfo memory orderInfo = OrderInfo({
-            order: Order({
-                maker: 0xd1d1aDfD330B29D4ccF9E0d44E90c256Df597dc9,
-                nonce: 1719484311801267893,
-                inTokenset: inTokenset,
-                outTokenset: outTokenset,
-                inAddressList: inAddressList,
-                outAddressList: outAddressList,
-                inAmount: 100000000,
-                outAmount: 98168567,
-                deadline: 1719484491
-            }),
-            orderHash: 0xfefb8341af95c9457ef2c7bdab4bd01e5f41ffd54321238cf5dd31c7457b62a4,
-            orderSign: hex"0bded5d095698775f2dd97f849e433de34bddb7080fcd49c0737641a3a95837e15db118736cc131293bff2fad70c8fe66de7229a2f08bb50b37a7a9dc352bc1d1b"
+            order: order,
+            orderHash: orderHash,
+            orderSign: orderSign
         });
         vm.startPrank(owner);
         swap.grantRole(swap.MAKER_ROLE(), 0xd1d1aDfD330B29D4ccF9E0d44E90c256Df597dc9);

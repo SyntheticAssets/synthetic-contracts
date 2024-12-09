@@ -18,6 +18,7 @@ contract StakeFactory is Initializable, OwnableUpgradeable, UUPSUpgradeable {
     mapping(uint256 => address) public stakeTokens;
     EnumerableSet.UintSet private assetIDs;
     address public stImpl;
+    mapping(uint256 => address) public stImpls;
 
     event CreateStakeToken(address stakeToken, uint256 assetID, uint48 cooldown);
     event SetSTImpl(address oldSTImpl, address stImpl);
@@ -31,6 +32,7 @@ contract StakeFactory is Initializable, OwnableUpgradeable, UUPSUpgradeable {
     function initialize(address owner, address factoryAddress_, address stImpl_) public initializer {
         __Ownable_init(owner);
         __UUPSUpgradeable_init();
+        require(factoryAddress_ != address(0), "factory is zero address");
         factoryAddress = factoryAddress_;
         _setSTImpl(stImpl_);
     }
@@ -44,13 +46,20 @@ contract StakeFactory is Initializable, OwnableUpgradeable, UUPSUpgradeable {
     function _setSTImpl(address stImpl_) internal {
         require(stImpl_ != address(0), "stImpl is zero address");
         require(stImpl_ != stImpl, "stImpl not change");
-        for (uint i = 0; i < assetIDs.length(); i++) {
-            address stakeToken = stakeTokens[assetIDs.at(i)];
-            UUPSUpgradeable(stakeToken).upgradeToAndCall(stImpl_, new bytes(0));
-            emit UpgradeStakeToken(assetIDs.at(i), stImpl, stImpl_);
-        }
         emit SetSTImpl(stImpl, stImpl_);
         stImpl = stImpl_;
+    }
+
+    function upgradeSTImpl(uint256[] memory assetIDs_) external onlyOwner {
+        uint assetID;
+        for (uint i = 0; i < assetIDs_.length; i++) {
+            assetID = assetIDs_[i];
+            require(assetIDs.contains(assetID), "stake token not exist");
+            require(stImpls[assetID] != stImpl, "stake token already upgraded");
+            UUPSUpgradeable(stakeTokens[assetID]).upgradeToAndCall(stImpl, new bytes(0));
+            emit UpgradeStakeToken(assetID, stImpls[assetID], stImpl);
+            stImpls[assetID] = stImpl;
+        }
     }
 
     function createStakeToken(uint256 assetID, uint48 cooldown) external onlyOwner returns (address stakeToken)  {
@@ -71,6 +80,7 @@ contract StakeFactory is Initializable, OwnableUpgradeable, UUPSUpgradeable {
             ))
         ));
         stakeTokens[assetID] = stakeToken;
+        stImpls[assetID] = stImpl;
         assetIDs.add(assetID);
         emit CreateStakeToken(stakeToken, assetID, cooldown);
     }

@@ -8,6 +8,7 @@ contract AssetController is Ownable, Pausable, IAssetController {
     address public factoryAddress;
 
     constructor(address owner, address factoryAddress_) Ownable(owner) {
+        require(factoryAddress_ != address(0), "factory is zero address");
         factoryAddress = factoryAddress_;
     }
 
