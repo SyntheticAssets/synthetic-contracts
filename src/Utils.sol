@@ -135,4 +135,31 @@ library Utils {
     function calcTokenHash(Token memory token) internal pure returns (bytes32) {
         return keccak256(abi.encodePacked(token.chain, token.symbol, token.addr, token.decimals));
     }
+
+    function getMerkleRoot(bytes32[] memory leaves) internal pure returns (bytes32) {
+        require(leaves.length > 0, "No leaves provided");
+
+        while (leaves.length > 1) {
+            uint256 len = leaves.length;
+            uint256 i = 0;
+            for (; i + 1 < len; i += 2) {
+                leaves[i / 2] = _hashPair(leaves[i], leaves[i + 1]);
+            }
+            if (i < len) {
+                leaves[i / 2] = leaves[i];
+                len = i / 2 + 1;
+            } else {
+                len = i / 2;
+            }
+            assembly {
+                mstore(leaves, len)
+            }
+        }
+        return leaves[0];
+    }
+
+
+    function _hashPair(bytes32 a, bytes32 b) internal pure returns (bytes32) {
+        return a < b ? keccak256(abi.encodePacked(a, b)) : keccak256(abi.encodePacked(b, a));
+    }
 }
