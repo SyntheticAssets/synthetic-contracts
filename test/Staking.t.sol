@@ -65,11 +65,11 @@ contract StakingTest is Test {
         AssetFactory factoryImpl = new AssetFactory();
         address factoryAddress = address(new ERC1967Proxy(
             address(factoryImpl),
-            abi.encodeCall(AssetFactory.initialize, (owner, swap, vault, "SETH", address(tokenImpl)))
+            abi.encodeCall(AssetFactory.initialize, (owner, vault, "SETH", address(tokenImpl)))
         ));
         factory = AssetFactory(factoryAddress);
         issuer = new AssetIssuer(owner, address(factory));
-        address assetTokenAddress = factory.createAssetToken(getAsset(), 10000, address(issuer), rebalancer, feeManager);
+        address assetTokenAddress = factory.createAssetToken(getAsset(), 10000, address(issuer), rebalancer, feeManager, swap);
         assetToken = AssetToken(assetTokenAddress);
         StakeToken stakeTokenImpl = new StakeToken();
         StakeFactory stakeFactoryImpl = new StakeFactory();
@@ -84,7 +84,7 @@ contract StakingTest is Test {
         )));
         uSSI = USSI(address(new ERC1967Proxy(
             address(new USSI()),
-            abi.encodeCall(USSI.initialize, (owner, orderSigner, address(factory), address(WBTC)))
+            abi.encodeCall(USSI.initialize, (owner, orderSigner, address(factory), address(WBTC), "SETH"))
         )));
         vm.stopPrank();
         vm.startPrank(address(issuer));
@@ -194,6 +194,7 @@ contract StakingTest is Test {
     function testUSSI() public {
         // apply mint
         USSI.HedgeOrder memory mintOrder = USSI.HedgeOrder({
+            chain: "SETH",
             orderType: USSI.HedgeOrderType.MINT,
             assetID: 1,
             redeemToken: address(0),
@@ -202,9 +203,7 @@ contract StakingTest is Test {
             outAmount: stakeAmount * 10,
             deadline: block.timestamp + 600,
             requester: hedger,
-            receiver: hedger,
-            __residual: uint96(0),
-            __gap: [uint256(0),uint256(0),uint256(0),uint256(0)]
+            receiver: hedger
         });
         vm.startPrank(hedger);
         vm.expectRevert();
@@ -229,6 +228,7 @@ contract StakingTest is Test {
         assertEq(uSSI.balanceOf(hedger), stakeAmount * 10);
         // apply redeem
         USSI.HedgeOrder memory redeemOrder = USSI.HedgeOrder({
+            chain: "SETH",
             orderType: USSI.HedgeOrderType.REDEEM,
             assetID: 1,
             redeemToken: uSSI.redeemToken(),
@@ -237,9 +237,7 @@ contract StakingTest is Test {
             outAmount: stakeAmount,
             deadline: block.timestamp + 600,
             requester: hedger,
-            receiver: hedger,
-            __residual: uint96(0),
-            __gap: [uint256(0),uint256(0),uint256(0),uint256(0)]
+            receiver: hedger
         });
         orderHash = keccak256(abi.encode(redeemOrder));
         (v, r, s) = vm.sign(orderSignerPk, orderHash);

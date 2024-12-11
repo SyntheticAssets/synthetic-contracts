@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: BUSL-1.1
 pragma solidity ^0.8.25;
 import './Interface.sol';
+import "@openzeppelin/contracts/utils/Arrays.sol";
+
 library Utils {
     function stringToAddress(string memory str) internal pure returns (address) {
         bytes memory strBytes = bytes(str);
@@ -134,5 +136,19 @@ library Utils {
 
     function calcTokenHash(Token memory token) internal pure returns (bytes32) {
         return keccak256(abi.encodePacked(token.chain, token.symbol, token.addr, token.decimals));
+    }
+
+    function hasDuplicates(Token[] memory a) internal pure returns (bool) {
+        uint256[] memory b = new uint256[](a.length);
+        for (uint i = 0; i < a.length; i++) {
+            b[i] = uint256(calcTokenHash(a[i]));
+        }
+        uint256[] memory c = Arrays.sort(b);
+        for (uint i = 0; i < c.length - 1; i++) {
+            if (c[i] == c[i+1]) {
+                return true;
+            }
+        }
+        return false;
     }
 }

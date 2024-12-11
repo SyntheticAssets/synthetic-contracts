@@ -26,6 +26,7 @@ contract StakeToken is Initializable, ERC20Upgradeable, OwnableUpgradeable, UUPS
     event Stake(address staker, uint256 amount);
     event UnStake(address unstaker, uint256 amount);
     event Withdraw(address withdrawer, uint256 amount);
+    event SetCooldown(uint48 oldCooldown, uint48 cooldown);
 
     /// @custom:oz-upgrades-unsafe-allow constructor
     constructor() {
@@ -64,6 +65,7 @@ contract StakeToken is Initializable, ERC20Upgradeable, OwnableUpgradeable, UUPS
     }
 
     function stake(uint256 amount) external whenNotPaused {
+        require(amount > 0, "amount is zero");
         require(IERC20(token).allowance(msg.sender, address(this)) >= amount, "not enough allowance");
         IERC20(token).safeTransferFrom(msg.sender, address(this), amount);
         _mint(msg.sender, amount);
@@ -71,6 +73,7 @@ contract StakeToken is Initializable, ERC20Upgradeable, OwnableUpgradeable, UUPS
     }
 
     function unstake(uint256 amount) external whenNotPaused {
+        require(amount > 0, "amount is zero");
         CooldownInfo storage cooldownInfo = cooldownInfos[msg.sender];
         require(amount <= balanceOf(msg.sender), "not enough to unstake");
         cooldownInfo.cooldownAmount += amount;
@@ -80,11 +83,19 @@ contract StakeToken is Initializable, ERC20Upgradeable, OwnableUpgradeable, UUPS
     }
 
     function withdraw(uint256 amount) external whenNotPaused {
+        require(amount > 0, "amount is zero");
         CooldownInfo storage cooldownInfo = cooldownInfos[msg.sender];
         require(cooldownInfo.cooldownAmount >= amount, "not enough cooldown amount");
         require(cooldownInfo.cooldownEndTimestamp <= block.timestamp, "cooldowning");
         cooldownInfo.cooldownAmount -= amount;
         IERC20(token).safeTransfer(msg.sender, amount);
         emit Withdraw(msg.sender, amount);
+    }
+
+    function setCooldown(uint48 cooldown_) external onlyOwner {
+        require(cooldown != cooldown, "cooldown not change");
+        require(cooldown_ < MAX_COOLDOWN, "cooldown exceeds MAX_COOLDOWN");
+        emit SetCooldown(cooldown, cooldown_);
+        cooldown = cooldown_;
     }
 }

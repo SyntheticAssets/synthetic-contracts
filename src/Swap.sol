@@ -24,6 +24,7 @@ contract Swap is AccessControl, Pausable, ISwap {
     string[] public takerSenders;
 
     uint256 public constant MAX_MARKER_CONFIRM_DELAY = 1 hours;
+    uint256 public constant EXPIRATION = 6 hours;
 
     event AddSwapRequest(address indexed taker, bool inByContract, bool outByContract, OrderInfo orderInfo);
     event MakerConfirmSwapRequest(address indexed maker, bytes32 orderHash);
@@ -32,6 +33,7 @@ contract Swap is AccessControl, Pausable, ISwap {
     event RollbackSwapRequest(address indexed taker, bytes32 orderHash);
     event SetTakerAddresses(string[] receivers, string[] senders);
     event CancelSwapRequest(address indexed taker, bytes32 orderHash);
+    event ForceCancelSwapRequest(bytes32 orderHash);
 
     constructor(address owner, string memory chain_) {
         _grantRole(DEFAULT_ADMIN_ROLE, owner);
@@ -74,6 +76,9 @@ contract Swap is AccessControl, Pausable, ISwap {
                 return 8;
             }
         }
+        if (keccak256(abi.encode(orderInfo.order.chain)) != keccak256(abi.encode(chain))) {
+            return 9;
+        }
         return 0;
     }
 
@@ -96,7 +101,7 @@ contract Swap is AccessControl, Pausable, ISwap {
     }
 
     function checkTokenset(Token[] memory tokenset, string[] memory addressList) internal view {
-        require(tokenset.length == addressList.length, "tokenset length not maatch addressList length");
+        require(tokenset.length == addressList.length, "tokenset length not match addressList length");
         for (uint i = 0; i < tokenset.length; i++) {
             require(bytes32(bytes(tokenset[i].chain)) == bytes32(bytes(chain)), "chain not match");
             address tokenAddress = Utils.stringToAddress(tokenset[i].addr);
@@ -138,6 +143,16 @@ contract Swap is AccessControl, Pausable, ISwap {
         swapRequests[orderHash].status = SwapRequestStatus.CANCEL;
         swapRequests[orderHash].blocknumber = block.number;
         emit CancelSwapRequest(msg.sender, orderHash);
+    }
+
+    function forceCancelSwapRequest(OrderInfo memory orderInfo) external onlyRole(DEFAULT_ADMIN_ROLE) whenNotPaused {
+        validateOrderInfo(orderInfo);
+        bytes32 orderHash = orderInfo.orderHash;
+        require(swapRequests[orderHash].status == SwapRequestStatus.PENDING || swapRequests[orderHash].status == SwapRequestStatus.MAKER_CONFIRMED, "swap request status is not pending or maker confirmed");
+        require(swapRequests[orderHash].requestTimestamp + EXPIRATION <= block.timestamp, "swap request not expired");
+        swapRequests[orderHash].status = SwapRequestStatus.FORCE_CANCEL;
+        swapRequests[orderHash].blocknumber = block.number;
+        emit ForceCancelSwapRequest(orderHash);
     }
 
     function makerRejectSwapRequest(OrderInfo memory orderInfo) external onlyRole(MAKER_ROLE) whenNotPaused {

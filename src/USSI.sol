@@ -25,6 +25,7 @@ contract USSI is Initializable, OwnableUpgradeable, AccessControlUpgradeable, ER
     enum HedgeOrderStatus { NONE, PENDING, REJECTED, CONFIRMED }
 
     struct HedgeOrder {
+        string chain;
         HedgeOrderType orderType;
         uint256 assetID;
         address redeemToken;
@@ -34,8 +35,6 @@ contract USSI is Initializable, OwnableUpgradeable, AccessControlUpgradeable, ER
         uint256 deadline;
         address requester;
         address receiver;
-        uint96 __residual;
-        uint256[4] __gap;
     }
 
     EnumerableSet.Bytes32Set orderHashs;
@@ -53,6 +52,8 @@ contract USSI is Initializable, OwnableUpgradeable, AccessControlUpgradeable, ER
 
     mapping(bytes32 => bytes32) public redeemTxHashs;
 
+    string public chain;
+
     event AddAssetID(uint256 assetID);
     event RemoveAssetID(uint256 assetID);
     event UpdateOrderSigner(address oldOrderSigner, address orderSigner);
@@ -69,7 +70,7 @@ contract USSI is Initializable, OwnableUpgradeable, AccessControlUpgradeable, ER
         _disableInitializers();
     }
 
-    function initialize(address owner, address orderSigner_, address factoryAddress_, address redeemToken_) public initializer {
+    function initialize(address owner, address orderSigner_, address factoryAddress_, address redeemToken_, string memory chain_) public initializer {
         __Ownable_init(owner);
         __AccessControl_init();
         __ERC20_init("USSI", "USSI");
@@ -81,10 +82,19 @@ contract USSI is Initializable, OwnableUpgradeable, AccessControlUpgradeable, ER
         factoryAddress = factoryAddress_;
         redeemToken = redeemToken_;
         orderSigner = orderSigner_;
+        chain = chain_;
         _grantRole(DEFAULT_ADMIN_ROLE, owner);
     }
 
     function _authorizeUpgrade(address newImplementation) internal override onlyOwner {}
+
+    function pause() external onlyOwner {
+        _pause();
+    }
+
+    function unpause() external onlyOwner {
+        _unpause();
+    }
 
     function decimals() public pure override(ERC20Upgradeable) returns (uint8) {
         return 8;
@@ -128,6 +138,7 @@ contract USSI is Initializable, OwnableUpgradeable, AccessControlUpgradeable, ER
     }
 
     function checkHedgeOrder(HedgeOrder calldata hedgeOrder, bytes32 orderHash, bytes calldata orderSignature) public view {
+        require(keccak256(abi.encode(chain)) == keccak256(abi.encode(hedgeOrder.chain)), "chain not match");
         if (hedgeOrder.orderType == HedgeOrderType.MINT) {
             require(supportAssetIDs.contains(hedgeOrder.assetID), "assetID not supported");
         }
@@ -145,6 +156,10 @@ contract USSI is Initializable, OwnableUpgradeable, AccessControlUpgradeable, ER
         bytes32 orderHash = keccak256(abi.encode(hedgeOrder));
         checkHedgeOrder(hedgeOrder, orderHash, orderSignature);
         require(hedgeOrder.orderType == HedgeOrderType.MINT, "order type not match");
+        // cannot hedge when underlying is changing
+        IAssetToken assetToken = IAssetToken(IAssetFactory(factoryAddress).assetTokens(hedgeOrder.assetID));
+        require(!assetToken.rebalancing(), "asset token is rebalancing");
+        require(assetToken.feeCollected(), "asset token has fee not collected");
         HedgeOrder storage hedgeOrder_ = hedgeOrders[orderHash];
         hedgeOrder_.orderType = hedgeOrder.orderType;
         hedgeOrder_.assetID = hedgeOrder.assetID;
@@ -156,9 +171,8 @@ contract USSI is Initializable, OwnableUpgradeable, AccessControlUpgradeable, ER
         orderHashs.add(orderHash);
         orderStatus[orderHash] = HedgeOrderStatus.PENDING;
         requestTimestamps[orderHash] = block.timestamp;
-        IERC20 assetToken = IERC20(IAssetFactory(factoryAddress).assetTokens(hedgeOrder.assetID));
-        require(assetToken.allowance(hedgeOrder.requester, address(this)) >= hedgeOrder.inAmount, "not enough allowance");
-        assetToken.safeTransferFrom(hedgeOrder.requester, address(this), hedgeOrder.inAmount);
+        require(IERC20(assetToken).allowance(hedgeOrder.requester, address(this)) >= hedgeOrder.inAmount, "not enough allowance");
+        IERC20(assetToken).safeTransferFrom(hedgeOrder.requester, address(this), hedgeOrder.inAmount);
         emit ApplyMint(hedgeOrder);
     }
 
@@ -183,7 +197,7 @@ contract USSI is Initializable, OwnableUpgradeable, AccessControlUpgradeable, ER
         IERC20 assetToken = IERC20(IAssetFactory(factoryAddress).assetTokens(hedgeOrder.assetID));
         IAssetIssuer issuer = IAssetIssuer(IAssetFactory(factoryAddress).issuers(hedgeOrder.assetID));
         if (assetToken.allowance(address(this), address(issuer)) < hedgeOrder.inAmount) {
-            assetToken.forceApprove(address(issuer), type(uint256).max);
+            assetToken.forceApprove(address(issuer), hedgeOrder.inAmount);
         }
         issuer.burnFor(hedgeOrder.assetID, hedgeOrder.inAmount);
         emit ConfirmMint(orderHash);

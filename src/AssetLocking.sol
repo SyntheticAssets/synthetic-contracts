@@ -98,19 +98,24 @@ contract AssetLocking is Initializable, OwnableUpgradeable, UUPSUpgradeable, Pau
     }
 
     function lock(address token, uint256 amount) external whenNotPaused {
+        require(amount > 0, "amount is zero");
         require(tokens_.contains(token), "token not supported");
         require(lockConfigs[token].epoch == activeEpochs[token], "token cannot stake now");
         LockData storage lockData = lockDatas[token][msg.sender];
         LockConfig storage lockConfig = lockConfigs[token];
         require(lockConfig.totalLock + amount <= lockConfig.lockLimit, "total lock amount exceeds lock limit");
+        require(IERC20(token).balanceOf(address(this)) >= (lockConfig.totalLock + lockConfig.totalCooldown), "balance less than totalLock + totalCooldown");
         require(IERC20(token).allowance(msg.sender, address(this)) >= amount, "not enough allowance");
         lockData.amount += amount;
         lockConfig.totalLock += amount;
-        IERC20(token).transferFrom(msg.sender, address(this), amount);
+        uint256 balanceBefore = IERC20(token).balanceOf(address(this));
+        IERC20(token).safeTransferFrom(msg.sender, address(this), amount);
+        require(IERC20(token).balanceOf(address(this)) >= (balanceBefore + amount), "token balance not in consistency");
         emit Lock(msg.sender, token, amount, lockData.amount, lockConfig.totalLock);
     }
 
     function unlock(address token, uint256 amount) external whenNotPaused {
+        require(amount > 0, "amount is zero");
         LockData storage lockData = lockDatas[token][msg.sender];
         LockConfig storage lockConfig = lockConfigs[token];
         require(lockData.amount >= amount, "not enough balance to unlock");
@@ -123,14 +128,18 @@ contract AssetLocking is Initializable, OwnableUpgradeable, UUPSUpgradeable, Pau
     }
 
     function withdraw(address token, uint256 amount) external whenNotPaused {
+        require(amount > 0, "amount is zero");
         LockData storage lockData = lockDatas[token][msg.sender];
         require(lockData.cooldownAmount > 0, "nothing to withdraw");
         require(lockData.cooldownEndTimestamp <= block.timestamp, "coolingdown");
         require(amount <= lockData.cooldownAmount, "no enough balance to withdraw");
         lockData.cooldownAmount -= amount;
         LockConfig storage lockConfig = lockConfigs[token];
+        require(IERC20(token).balanceOf(address(this)) >= (lockConfig.totalLock + lockConfig.totalCooldown), "balance less than totalLock + totalCooldown");
         lockConfig.totalCooldown -= amount;
+        uint256 balanceBefore = IERC20(token).balanceOf(address(this));
         IERC20(token).safeTransfer(msg.sender, amount);
+        require(IERC20(token).balanceOf(address(this)) >= (balanceBefore - amount), "token balance not in consistency");
         emit Withdraw(msg.sender, token, amount);
     }
 }

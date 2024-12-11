@@ -2,3 +2,5 @@ cache
 out
 .deploy.env
 broadcast
+.vscode
+verify.sh

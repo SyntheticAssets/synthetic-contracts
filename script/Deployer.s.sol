@@ -29,7 +29,7 @@ contract DeployerScript is Script {
         AssetFactory factoryImpl = new AssetFactory();
         address factory = address(new ERC1967Proxy(
             address(factoryImpl),
-            abi.encodeCall(AssetFactory.initialize, (owner, address(swap), vault, chain, address(tokenImpl)))
+            abi.encodeCall(AssetFactory.initialize, (owner, vault, chain, address(tokenImpl)))
         ));
         AssetIssuer issuer = new AssetIssuer(owner, address(factory));
         AssetRebalancer rebalancer = new AssetRebalancer(owner, address(factory));
@@ -49,7 +49,7 @@ contract DeployerScript is Script {
         USSI uSSIImpl = new USSI();
         address uSSI = address(new ERC1967Proxy(
             address(uSSIImpl),
-            abi.encodeCall(USSI.initialize, (owner, orderSigner, address(factory), redeemToken))
+            abi.encodeCall(USSI.initialize, (owner, orderSigner, address(factory), redeemToken, chain))
         ));
         address sUSSI = address(new ERC1967Proxy(
             address(stakeTokenImpl),

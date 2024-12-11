@@ -28,6 +28,9 @@ contract AssetIssuer is AssetController, IAssetIssuer {
 
     uint256 public feeDecimals = 8;
 
+    mapping(address => mapping(address => uint256)) public claimables;
+    mapping(address => uint256) public tokenClaimables;
+
     event SetIssueAmountRange(uint indexed assetID, uint min, uint max);
     event SetIssueFee(uint indexed assetID, uint issueFee);
     event AddParticipant(uint indexed assetID, address participant);
@@ -37,7 +40,7 @@ contract AssetIssuer is AssetController, IAssetIssuer {
     event ConfirmMintRequest(uint nonce);
     event AddRedeemRequest(uint nonce);
     event RejectRedeemRequest(uint nonce);
-    event ConfirmRedeemRequest(uint nonce);
+    event ConfirmRedeemRequest(uint nonce, bool force);
 
     constructor(address owner, address factoryAddress_)
         AssetController(owner, factoryAddress_) {
@@ -78,14 +81,16 @@ contract AssetIssuer is AssetController, IAssetIssuer {
         return mintRequests[nonce];
     }
 
-    function addMintRequest(uint256 assetID, OrderInfo memory orderInfo) external whenNotPaused returns (uint) {
+    function addMintRequest(uint256 assetID, OrderInfo memory orderInfo, uint256 maxIssueFee) external whenNotPaused returns (uint) {
+        require(_issueFees.get(assetID) <= maxIssueFee, "current issue fee larger than max issue fee");
+        require(orderInfo.order.requester == msg.sender, "msg sender not order requester");
         require(_participants[assetID].contains(msg.sender), "msg sender not a participant");
         require(_minAmounts.contains(assetID) && _maxAmounts.contains(assetID), "issue amount range not set");
         require(_issueFees.contains(assetID), "issue fee not set");
         IAssetFactory factory = IAssetFactory(factoryAddress);
         address assetTokenAddress = factory.assetTokens(assetID);
         IAssetToken assetToken = IAssetToken(assetTokenAddress);
-        address swapAddress = factory.swap();
+        address swapAddress = factory.swaps(assetID);
         ISwap swap = ISwap(swapAddress);
         require(assetToken.feeCollected(), "has fee not collect");
         require(assetToken.rebalancing() == false, "is rebalancing");
@@ -105,7 +110,7 @@ contract AssetIssuer is AssetController, IAssetIssuer {
             require(inToken.balanceOf(msg.sender) >= transferAmount, "not enough balance");
             require(inToken.allowance(msg.sender, address(this)) >= transferAmount, "not enough allowance");
             if (inToken.allowance(address(this), swapAddress) < inTokenAmount) {
-                inToken.forceApprove(swapAddress, type(uint256).max);
+                inToken.forceApprove(swapAddress, inTokenAmount);
             }
             inToken.safeTransferFrom(msg.sender, address(this), transferAmount);
         }
@@ -133,7 +138,7 @@ contract AssetIssuer is AssetController, IAssetIssuer {
         require(mintRequest.status == RequestStatus.PENDING);
         ISwap swap = ISwap(mintRequest.swapAddress);
         SwapRequest memory swapRequest = swap.getSwapRequest(mintRequest.orderHash);
-        require(swapRequest.status == SwapRequestStatus.REJECTED || swapRequest.status == SwapRequestStatus.CANCEL);
+        require(swapRequest.status == SwapRequestStatus.REJECTED || swapRequest.status == SwapRequestStatus.CANCEL || swapRequest.status == SwapRequestStatus.FORCE_CANCEL, "swap request is not rejected/cancelled/force cancelled");
         Order memory order = orderInfo.order;
         Token[] memory inTokenset = order.inTokenset;
         IAssetFactory factory = IAssetFactory(factoryAddress);
@@ -173,8 +178,10 @@ contract AssetIssuer is AssetController, IAssetIssuer {
             IERC20 inToken = IERC20(tokenAddress);
             uint inTokenAmount = inTokenset[i].amount * order.inAmount / 10**8;
             uint feeTokenAmount = inTokenAmount * mintRequest.issueFee / 10**feeDecimals;
-            require(inToken.balanceOf(address(this)) >= feeTokenAmount, "not enough balance");
-            inToken.safeTransfer(vault, feeTokenAmount);
+            if (feeTokenAmount > 0) {
+                require(inToken.balanceOf(address(this)) >= feeTokenAmount, "not enough balance");
+                inToken.safeTransfer(vault, feeTokenAmount);
+            }
         }
         IAssetToken assetToken = IAssetToken(mintRequest.assetTokenAddress);
         assetToken.mint(mintRequest.requester, mintRequest.amount);
@@ -193,14 +200,16 @@ contract AssetIssuer is AssetController, IAssetIssuer {
         return redeemRequests[nonce];
     }
 
-    function addRedeemRequest(uint256 assetID, OrderInfo memory orderInfo) external whenNotPaused returns (uint256) {
+    function addRedeemRequest(uint256 assetID, OrderInfo memory orderInfo, uint256 maxIssueFee) external whenNotPaused returns (uint256) {
+        require(_issueFees.get(assetID) <= maxIssueFee, "current issue fee larger than max issue fee");
+        require(orderInfo.order.requester == msg.sender, "msg sender not order requester");
         require(_participants[assetID].contains(msg.sender), "msg sender not a participant");
         require(_minAmounts.contains(assetID) && _maxAmounts.contains(assetID), "issue amount range not set");
         require(_issueFees.contains(assetID), "issue fee not set");
         IAssetFactory factory = IAssetFactory(factoryAddress);
         address assetTokenAddress = factory.assetTokens(assetID);
         IAssetToken assetToken = IAssetToken(assetTokenAddress);
-        address swapAddress = factory.swap();
+        address swapAddress = factory.swaps(assetID);
         ISwap swap = ISwap(swapAddress);
         require(assetToken.hasRole(assetToken.ISSUER_ROLE(), address(this)), "not a issuer");
         require(assetToken.feeCollected(), "has fee not collect");
@@ -240,7 +249,7 @@ contract AssetIssuer is AssetController, IAssetIssuer {
         require(redeemRequest.status == RequestStatus.PENDING, "redeem request is not pending");
         ISwap swap = ISwap(redeemRequest.swapAddress);
         SwapRequest memory swapRequest = swap.getSwapRequest(redeemRequest.orderHash);
-        require(swapRequest.status == SwapRequestStatus.REJECTED, "swap request is not rejected");
+        require(swapRequest.status == SwapRequestStatus.REJECTED || swapRequest.status == SwapRequestStatus.CANCEL || swapRequest.status == SwapRequestStatus.FORCE_CANCEL, "swap request is not rejected/cancelled/force cancelled");
         IAssetToken assetToken = IAssetToken(redeemRequest.assetTokenAddress);
         require(assetToken.balanceOf(address(this)) >= redeemRequest.amount, "not enough asset token to transfer");
         assetToken.safeTransfer(redeemRequest.requester, redeemRequest.amount);
@@ -249,7 +258,7 @@ contract AssetIssuer is AssetController, IAssetIssuer {
         emit RejectRedeemRequest(nonce);
     }
 
-    function confirmRedeemRequest(uint nonce, OrderInfo memory orderInfo, bytes[] memory inTxHashs) external onlyOwner {
+    function confirmRedeemRequest(uint nonce, OrderInfo memory orderInfo, bytes[] memory inTxHashs, bool force) external onlyOwner {
         require(nonce < redeemRequests.length);
         Request memory redeemRequest = redeemRequests[nonce];
         checkRequestOrderInfo(redeemRequest, orderInfo);
@@ -270,13 +279,18 @@ contract AssetIssuer is AssetController, IAssetIssuer {
             uint feeTokenAmount = outTokenAmount * redeemRequest.issueFee / 10**feeDecimals;
             uint transferAmount = outTokenAmount - feeTokenAmount;
             require(outToken.balanceOf(address(this)) >= outTokenAmount, "not enough balance");
-            outToken.safeTransfer(redeemRequest.requester, transferAmount);
-            outToken.safeTransfer(vault, feeTokenAmount);
+            if (!force) {
+                outToken.safeTransfer(redeemRequest.requester, transferAmount);
+                outToken.safeTransfer(vault, feeTokenAmount);
+            } else {
+                claimables[tokenAddress][redeemRequest.requester] += transferAmount;
+                tokenClaimables[tokenAddress] += transferAmount;
+            }
         }
         assetToken.burn(redeemRequest.amount);
         redeemRequests[nonce].status = RequestStatus.CONFIRMED;
         assetToken.unlockIssue();
-        emit ConfirmRedeemRequest(nonce);
+        emit ConfirmRedeemRequest(nonce, force);
     }
 
     function isParticipant(uint256 assetID, address participant) external view returns (bool) {
@@ -320,9 +334,12 @@ contract AssetIssuer is AssetController, IAssetIssuer {
             require(!assetToken.issuing(), "is issuing");
         }
         for (uint i = 0; i < tokenAddresses.length; i++) {
-            if (tokenAddresses[i] != address(0)) {
-                IERC20 token = IERC20(tokenAddresses[i]);
-                token.safeTransfer(owner(), token.balanceOf(address(this)));
+            address tokenAddress = tokenAddresses[i];
+            if (tokenAddress != address(0)) {
+                IERC20 token = IERC20(tokenAddress);
+                if (token.balanceOf(address(this)) > tokenClaimables[tokenAddress]) {
+                    token.safeTransfer(owner(), token.balanceOf(address(this)) - tokenClaimables[tokenAddress]);
+                }
             }
         }
     }
@@ -331,9 +348,18 @@ contract AssetIssuer is AssetController, IAssetIssuer {
         IAssetFactory factory = IAssetFactory(factoryAddress);
         IAssetToken assetToken = IAssetToken(factory.assetTokens(assetID));
         require(assetToken.allowance(msg.sender, address(this)) >= amount, "not enough allowance");
+        require(assetToken.feeCollected(), "asset token has fee not collected");
         assetToken.lockIssue();
         assetToken.safeTransferFrom(msg.sender, address(this), amount);
         assetToken.burn(amount);
         assetToken.unlockIssue();
+    }
+
+    function claim(address token) external whenNotPaused {
+        require(claimables[token][msg.sender] > 0, "nothing to claim");
+        uint256 amount = claimables[token][msg.sender];
+        claimables[token][msg.sender] = 0;
+        tokenClaimables[token] -= amount;
+        IERC20(token).safeTransfer(msg.sender, amount);
     }
 }
